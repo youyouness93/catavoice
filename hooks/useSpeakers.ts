@@ -27,6 +27,7 @@ interface UseSpeakersProps {
   userAvatar?: string
   isCreator: boolean
   agoraClient: IAgoraRTCClient
+  enabled?: boolean
 }
 
 export function useSpeakers({ 
@@ -35,7 +36,8 @@ export function useSpeakers({
   userName,
   userAvatar,
   isCreator, 
-  agoraClient 
+  agoraClient,
+  enabled = true
 }: UseSpeakersProps) {
   const [speakers, setSpeakers] = useState<Speaker[]>([])
   const [waitlist, setWaitlist] = useState<WaitlistUser[]>([])

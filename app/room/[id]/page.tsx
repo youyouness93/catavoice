@@ -93,10 +93,12 @@ export default function RoomPage() {
   }, [userId, roomId])
 
   // Gestion des speakers
-  const { speakers: speakersHook, requestToSpeak: requestToSpeakHook, isLoading: isLoadingSpeakers } = useSpeakers({
+  const { speakers: speakersHook, requestToSpeak: requestToSpeakHook } = useSpeakers({
     roomId,
-    userId: userId || '',
-    enabled: !!userId
+    userName: room?.users.find(u => u.id === userId)?.name || '',
+    userAvatar: room?.users.find(u => u.id === userId)?.avatarUrl,
+    isCreator: isHost,
+    agoraClient: client
   })
 
   // Voice chat

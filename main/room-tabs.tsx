@@ -69,6 +69,10 @@ export default function RoomTabs() {
       return
     }
 
+    // Déterminer l'URL de l'avatar à utiliser
+    const avatarUrl = uploadedImage || 
+      (selectedAvatar !== null ? predefinedAvatars[selectedAvatar - 1].src : null)
+
     try {
       console.log('Creating room...')
       const response = await fetch('/api/rooms', {
@@ -79,7 +83,7 @@ export default function RoomTabs() {
         body: JSON.stringify({
           name: roomName,
           userName: displayName,
-          avatarUrl: uploadedImage,
+          avatarUrl: avatarUrl,
         }),
       })
 
@@ -88,9 +92,15 @@ export default function RoomTabs() {
         throw new Error(error.message || 'Failed to create room')
       }
 
-      const data = await response.json()
-      console.log('Room created:', data)
-      router.push(`/room/${data.room.id}`)
+      const { room, user } = await response.json()
+      console.log('Room created:', { room, user })
+      
+      // Stocker les informations de l'utilisateur dans le localStorage
+      localStorage.setItem('userId', user.id)
+      localStorage.setItem('userName', user.name)
+      localStorage.setItem('userAvatar', user.avatarUrl || '')
+      
+      router.push(`/room/${room.id}`)
     } catch (error) {
       console.error('Error creating room:', error)
       alert('Failed to create room. Please try again.')
@@ -114,21 +124,27 @@ export default function RoomTabs() {
         body: JSON.stringify({
           roomId: joinRoomCode,
           userName: joinDisplayName,
-          avatarUrl: selectedAvatar ? predefinedAvatars[selectedAvatar - 1].src : null,
+          avatarUrl: uploadedImage || (selectedAvatar !== null ? predefinedAvatars[selectedAvatar - 1].src : null),
         }),
       })
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.message || 'Failed to join room')
+        throw new Error(error.error || 'Failed to join room')
       }
 
-      const data = await response.json()
-      console.log('Joined room:', data)
-      router.push(`/room/${data.room.id}`)
+      const { room, user } = await response.json()
+      console.log('Joined room:', { room, user })
+
+      // Stocker les informations de l'utilisateur dans le localStorage
+      localStorage.setItem('userId', user.id)
+      localStorage.setItem('userName', user.name)
+      localStorage.setItem('userAvatar', user.avatarUrl || '')
+
+      router.push(`/room/${room.id}`)
     } catch (error) {
       console.error('Error joining room:', error)
-      alert('Failed to join room. Please check the room code and try again.')
+      alert(error instanceof Error ? error.message : 'Failed to join room. Please check the room code and try again.')
     }
   }
 

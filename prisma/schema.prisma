@@ -1,3 +1,6 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,31 +11,53 @@ datasource db {
 }
 
 model Room {
-  id        String      @id @default(cuid())
-  name      String
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  users     User[]
-  messages  Message[]
+  id          String    @id @default(cuid())
+  name        String
+  creatorId   String    // ID du créateur de la room
+  maxSpeakers Int       @default(5)
+  users       User[]    @relation("RoomUsers")
+  speakers    Speaker[]
+  waitlist    Waitlist[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model User {
   id        String    @id @default(cuid())
   name      String
   avatarUrl String?
-  rooms     Room[]
-  messages  Message[]
+  rooms     Room[]    @relation("RoomUsers")
+  speakers  Speaker[]
+  waitlist  Waitlist[]
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 }
 
-model Message {
+model Speaker {
   id        String   @id @default(cuid())
-  content   String
-  userId    String
+  position  Int      // Position du speaker (1-5)
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
   roomId    String
-  user      User     @relation(fields: [userId], references: [id])
-  room      Room     @relation(fields: [roomId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  isMuted   Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([roomId, position])
+  @@unique([roomId, userId])
+}
+
+model Waitlist {
+  id          String   @id @default(cuid())
+  position    Int      // Position dans la liste d'attente
+  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  roomId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  requestedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([roomId, position])
+  @@unique([roomId, userId])
 }

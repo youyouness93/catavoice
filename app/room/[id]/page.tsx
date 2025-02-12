@@ -95,6 +95,7 @@ export default function RoomPage() {
   // Gestion des speakers
   const { speakers: speakersHook, requestToSpeak: requestToSpeakHook } = useSpeakers({
     roomId,
+    userId: userId || '',
     userName: room?.users.find(u => u.id === userId)?.name || '',
     userAvatar: room?.users.find(u => u.id === userId)?.avatarUrl,
     isCreator: isHost,

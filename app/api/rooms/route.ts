@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 
 export async function POST(req: Request) {
   try {
@@ -17,11 +18,11 @@ export async function POST(req: Request) {
     const room = await prisma.room.create({
       data: {
         name,
-        creatorId: user.id,  
+        creatorId: user.id,
         users: {
           connect: { id: user.id },
         },
-      },
+      } as Prisma.RoomCreateInput,
       include: {
         users: true,
       },

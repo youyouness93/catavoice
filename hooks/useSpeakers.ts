@@ -23,11 +23,10 @@ interface WaitlistUser {
 interface UseSpeakersProps {
   roomId: string
   userId: string
-  userName: string
+  userName?: string
   userAvatar?: string
-  isCreator: boolean
-  agoraClient: IAgoraRTCClient
-  enabled?: boolean
+  isCreator?: boolean
+  agoraClient?: IAgoraRTCClient
 }
 
 export function useSpeakers({ 
@@ -36,8 +35,7 @@ export function useSpeakers({
   userName,
   userAvatar,
   isCreator, 
-  agoraClient,
-  enabled = true
+  agoraClient 
 }: UseSpeakersProps) {
   const [speakers, setSpeakers] = useState<Speaker[]>([])
   const [waitlist, setWaitlist] = useState<WaitlistUser[]>([])

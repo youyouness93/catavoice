@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useVoiceChat } from '@/hooks/useVoiceChat'
 import { useSpeakers } from '@/hooks/useSpeakers'
 import { SpeakersPanel } from '@/components/room/SpeakersPanel'
@@ -24,17 +24,19 @@ interface User {
   avatarUrl?: string
 }
 
-export default function RoomPage() {
-  const params = useParams()
-  const roomId = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params.id[0] : ''
+export default function RoomPage({
+  params,
+}: {
+  params: { id: string }
+}) {
   const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
   const [userAvatar, setUserAvatar] = useState<string | null>(null)
+  const [room, setRoom] = useState<Room | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
   const [isHost, setIsHost] = useState(false)
   const [isCreator, setIsCreator] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
-  const [room, setRoom] = useState<Room | null>(null)
   const [speakers, setSpeakers] = useState<string[]>([])
   const [speakerRequests, setSpeakerRequests] = useState<string[]>([])
   const { toast } = useToast()
@@ -66,7 +68,7 @@ export default function RoomPage() {
 
     socket.on('connect', () => {
       console.log('Connected to Socket.IO')
-      socket.emit('join_room', roomId)
+      socket.emit('join_room', params.id)
     })
 
     socket.on('SPEAKER_REQUEST', (requesterId: string) => {
@@ -90,16 +92,12 @@ export default function RoomPage() {
     return () => {
       socket.disconnect()
     }
-  }, [userId, roomId])
+  }, [userId, params.id])
 
   // Gestion des speakers
-  const { speakers: speakersHook, requestToSpeak: requestToSpeakHook } = useSpeakers({
-    roomId,
+  const { speakers: speakersHook, error: speakersError, requestToSpeak: requestToSpeakHook } = useSpeakers({
+    roomId: params.id,
     userId: userId || '',
-    userName: room?.users.find(u => u.id === userId)?.name || '',
-    userAvatar: room?.users.find(u => u.id === userId)?.avatarUrl,
-    isCreator: isHost,
-    agoraClient: client
   })
 
   // Voice chat
@@ -112,7 +110,7 @@ export default function RoomPage() {
     toggleMute
   } = useVoiceChat({
     appId: process.env.NEXT_PUBLIC_AGORA_APP_ID || '',
-    channel: roomId,
+    channel: params.id,
     uid: userId || '',
     isHost,
     isSpeaker: speakers.includes(userId || ''),
@@ -128,7 +126,7 @@ export default function RoomPage() {
 
   // Vérifier si l'utilisateur est le créateur de la room
   useEffect(() => {
-    if (!params.id) return
+    if (!params?.id) return
 
     const fetchRoom = async () => {
       try {
@@ -196,24 +194,10 @@ export default function RoomPage() {
     router.push('/')
   }
 
-  // Gérer les demandes de parole
-  const requestToSpeak = useCallback(async () => {
-    if (userId && socketRef.current) {
-      // Mettre à jour le state local immédiatement
-      setSpeakerRequests(prev => [...prev, userId])
-      
-      // Envoyer la demande via socket
-      socketRef.current.emit('REQUEST_TO_SPEAK', { roomId: params.id, userId })
-      
-      toast({
-        title: "Demande envoyée",
-        description: "Votre demande de parole a été envoyée au host",
-      })
-    }
-  }, [userId, params.id, toast])
-
   // Charger les speakers au démarrage et quand nécessaire
   const loadSpeakers = useCallback(async () => {
+    if (!params?.id) return;
+
     try {
       const response = await fetch(`/api/rooms/${params.id}/speakers`)
       if (!response.ok) {
@@ -224,11 +208,11 @@ export default function RoomPage() {
     } catch (error) {
       console.error('Error loading speakers:', error)
     }
-  }, [params.id])
+  }, [params?.id])
 
   // Retirer un speaker
   const removeSpeaker = useCallback(async (speakerId: string) => {
-    if (!isHost) return;
+    if (!isHost || !params?.id) return;
 
     try {
       // Supprimer le speaker de la base de données
@@ -265,10 +249,12 @@ export default function RoomPage() {
         variant: "destructive",
       })
     }
-  }, [isHost, params.id, toast, loadSpeakers])
+  }, [isHost, params?.id, toast, loadSpeakers])
 
   // Accepter un speaker
   const acceptSpeaker = useCallback(async (speakerId: string) => {
+    if (!params?.id) return;
+    
     try {
       // Créer le speaker dans la base de données
       const response = await fetch(`/api/rooms/${params.id}/speakers`, {
@@ -307,7 +293,23 @@ export default function RoomPage() {
         variant: "destructive",
       })
     }
-  }, [params.id, toast, loadSpeakers])
+  }, [params?.id, toast, loadSpeakers])
+
+  // Gérer les demandes de parole
+  const requestToSpeak = useCallback(async () => {
+    if (!userId || !socketRef.current || !params?.id) return;
+
+    // Mettre à jour le state local immédiatement
+    setSpeakerRequests(prev => [...prev, userId])
+    
+    // Envoyer la demande via socket
+    socketRef.current.emit('REQUEST_TO_SPEAK', { roomId: params.id, userId })
+    
+    toast({
+      title: "Demande envoyée",
+      description: "Votre demande de parole a été envoyée au host",
+    })
+  }, [userId, params?.id, toast])
 
   // Charger les speakers au démarrage
   useEffect(() => {
@@ -395,12 +397,12 @@ export default function RoomPage() {
                     hostId={room.creatorId}
                     hostName={room.users.find(u => u.id === room.creatorId)?.name || 'Host'}
                     hostAvatar={room.users.find(u => u.id === room.creatorId)?.avatarUrl}
-                    speakers={speakersHook}
+                    speakers={speakers}
                     speakerRequests={speakerRequests}
                     currentUserId={userId}
                     roomId={params.id}
                     users={room.users}
-                    onRequestToSpeak={requestToSpeakHook}
+                    onRequestToSpeak={requestToSpeak}
                     onAcceptSpeaker={acceptSpeaker}
                     onRemoveSpeaker={removeSpeaker}
                     onToggleMute={toggleMute}

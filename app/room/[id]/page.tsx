@@ -93,7 +93,7 @@ export default function RoomPage() {
   }, [userId, roomId])
 
   // Gestion des speakers
-  const { speakers: speakersHook, speakersError, requestToSpeak: requestToSpeakHook } = useSpeakers({
+  const { speakers: speakersHook, requestToSpeak: requestToSpeakHook, isLoading: isLoadingSpeakers } = useSpeakers({
     roomId,
     userId: userId || '',
     enabled: !!userId
@@ -392,12 +392,12 @@ export default function RoomPage() {
                     hostId={room.creatorId}
                     hostName={room.users.find(u => u.id === room.creatorId)?.name || 'Host'}
                     hostAvatar={room.users.find(u => u.id === room.creatorId)?.avatarUrl}
-                    speakers={speakers}
+                    speakers={speakersHook}
                     speakerRequests={speakerRequests}
                     currentUserId={userId}
                     roomId={params.id}
                     users={room.users}
-                    onRequestToSpeak={requestToSpeak}
+                    onRequestToSpeak={requestToSpeakHook}
                     onAcceptSpeaker={acceptSpeaker}
                     onRemoveSpeaker={removeSpeaker}
                     onToggleMute={toggleMute}

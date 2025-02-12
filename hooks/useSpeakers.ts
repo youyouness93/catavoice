@@ -72,8 +72,8 @@ export function useSpeakers({
   const { sendMessage } = useRoomWebSocket({
     roomId,
     onSpeakerAdded: (speaker) => {
-      setSpeakers(prev => [...prev, speaker])
-      setWaitlist(prev => prev.filter(u => u.userId !== speaker.userId))
+      setSpeakers(prev => [...prev, speaker as unknown as Speaker] as Speaker[])
+      setWaitlist(prev => prev.filter(u => (u as unknown as WaitlistUser).userId !== (speaker as unknown as Speaker).userId))
     },
     onSpeakerRemoved: (speakerId) => {
       setSpeakers(prev => prev.filter(s => s.id !== speakerId))
@@ -138,7 +138,9 @@ export function useSpeakers({
       sendMessage('SPEAKER_ADDED', data)
 
       // Mettre à jour Agora pour le nouvel utilisateur
-      await agoraClient.setClientRole('host')
+      if (agoraClient) {
+        await agoraClient.setClientRole('host')
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to accept speaker')
     }

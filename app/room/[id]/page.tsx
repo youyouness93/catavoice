@@ -74,15 +74,15 @@ export default function RoomPage() {
       setSpeakerRequests(prev => [...prev, requesterId])
     })
 
-    socket.on('SPEAKER_ACCEPTED', (speakerId: string) => {
-      console.log('Speaker accepted:', speakerId)
-      setSpeakers(prev => [...prev, speakerId])
-      setSpeakerRequests(prev => prev.filter(id => id !== speakerId))
+    socket.on('SPEAKER_ACCEPTED', () => {
+      // Recharger la liste des speakers depuis la base de données
+      loadSpeakers()
+      setSpeakerRequests([]) // Vider la liste des demandes
     })
 
-    socket.on('SPEAKER_REMOVED', (speakerId: string) => {
-      console.log('Speaker removed:', speakerId)
-      setSpeakers(prev => prev.filter(id => id !== speakerId))
+    socket.on('SPEAKER_REMOVED', () => {
+      // Recharger la liste des speakers depuis la base de données
+      loadSpeakers()
     })
 
     socketRef.current = socket
@@ -125,27 +125,38 @@ export default function RoomPage() {
 
   // Vérifier si l'utilisateur est le créateur de la room
   useEffect(() => {
-    const checkCreator = async () => {
-      if (!userId) return
+    if (!params.id) return
 
+    const fetchRoom = async () => {
       try {
-        const res = await fetch(`/api/rooms/${roomId}`)
-        if (!res.ok) throw new Error('Failed to fetch room')
-        const room = await res.json()
-        setRoom(room)
-        setIsCreator(room.creatorId === userId)
-        setIsHost(room.creatorId === userId)
+        setIsLoading(true)
+        const response = await fetch(`/api/rooms/${params.id}`)
+        const data = await response.json()
+
+        if (!data) {
+          router.push('/')
+          return
+        }
+
+        setRoom(data)
+        setIsHost(data.creatorId === userId)
+        
+        // Récupérer les speakers depuis la base de données
+        loadSpeakers()
       } catch (error) {
-        console.error('Error checking creator:', error)
+        console.error('Error fetching room:', error)
+        toast({
+          title: "Error",
+          description: "Failed to load room data",
+          variant: "destructive",
+        })
       } finally {
         setIsLoading(false)
       }
     }
 
-    if (userId) {
-      checkCreator()
-    }
-  }, [roomId, userId])
+    fetchRoom()
+  }, [params.id, router, userId, toast])
 
   // Gérer les erreurs
   useEffect(() => {
@@ -183,37 +194,122 @@ export default function RoomPage() {
   }
 
   // Gérer les demandes de parole
-  const requestToSpeak = useCallback(() => {
+  const requestToSpeak = useCallback(async () => {
     if (userId && socketRef.current) {
-      socketRef.current.emit('REQUEST_TO_SPEAK', { roomId, userId })
+      // Mettre à jour le state local immédiatement
+      setSpeakerRequests(prev => [...prev, userId])
+      
+      // Envoyer la demande via socket
+      socketRef.current.emit('REQUEST_TO_SPEAK', { roomId: params.id, userId })
+      
       toast({
         title: "Demande envoyée",
         description: "Votre demande de parole a été envoyée au host",
       })
     }
-  }, [userId, roomId, toast])
+  }, [userId, params.id, toast])
 
-  // Accepter un speaker (host uniquement)
-  const acceptSpeaker = useCallback((speakerId: string) => {
-    if (isHost && socketRef.current) {
-      socketRef.current.emit('ACCEPT_SPEAKER', { roomId, speakerId })
-      toast({
-        title: "Speaker accepté",
-        description: "L'utilisateur peut maintenant parler",
-      })
+  // Charger les speakers au démarrage et quand nécessaire
+  const loadSpeakers = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/rooms/${params.id}/speakers`)
+      if (!response.ok) {
+        throw new Error('Failed to load speakers')
+      }
+      const data = await response.json()
+      setSpeakers(data.map((s: any) => s.userId))
+    } catch (error) {
+      console.error('Error loading speakers:', error)
     }
-  }, [isHost, roomId, toast])
+  }, [params.id])
 
-  // Retirer un speaker (host uniquement)
-  const removeSpeaker = useCallback((speakerId: string) => {
-    if (isHost && socketRef.current) {
-      socketRef.current.emit('REMOVE_SPEAKER', { roomId, speakerId })
+  // Retirer un speaker
+  const removeSpeaker = useCallback(async (speakerId: string) => {
+    if (!isHost) return;
+
+    try {
+      // Supprimer le speaker de la base de données
+      const response = await fetch(`/api/rooms/${params.id}/speakers`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId: speakerId }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to remove speaker')
+      }
+
+      // Émettre l'événement socket pour informer les autres utilisateurs
+      socketRef.current?.emit('REMOVE_SPEAKER', {
+        roomId: params.id,
+        speakerId,
+      })
+
+      // Recharger la liste des speakers
+      loadSpeakers()
+
       toast({
         title: "Speaker retiré",
         description: "L'utilisateur ne peut plus parler",
       })
+    } catch (error) {
+      console.error('Error removing speaker:', error)
+      toast({
+        title: "Erreur",
+        description: "Impossible de retirer le speaker",
+        variant: "destructive",
+      })
     }
-  }, [isHost, roomId, toast])
+  }, [isHost, params.id, toast, loadSpeakers])
+
+  // Accepter un speaker
+  const acceptSpeaker = useCallback(async (speakerId: string) => {
+    try {
+      // Créer le speaker dans la base de données
+      const response = await fetch(`/api/rooms/${params.id}/speakers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId: speakerId }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to add speaker')
+      }
+
+      // Émettre l'événement socket
+      socketRef.current?.emit('ACCEPT_SPEAKER', {
+        roomId: params.id,
+        speakerId,
+      })
+
+      // Recharger la liste des speakers
+      loadSpeakers()
+      
+      // Mettre à jour les demandes
+      setSpeakerRequests(prev => prev.filter(id => id !== speakerId))
+
+      toast({
+        title: "Speaker accepté",
+        description: "L'utilisateur peut maintenant parler",
+      })
+    } catch (error) {
+      console.error('Error accepting speaker:', error)
+      toast({
+        title: "Erreur",
+        description: "Impossible d'accepter le speaker",
+        variant: "destructive",
+      })
+    }
+  }, [params.id, toast, loadSpeakers])
+
+  // Charger les speakers au démarrage
+  useEffect(() => {
+    loadSpeakers()
+  }, [loadSpeakers])
 
   if (!userId || isLoading) {
     return (
@@ -233,53 +329,81 @@ export default function RoomPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b">
-        <div className="container flex items-center justify-between h-14">
-          <h1 className="text-lg font-semibold">{room.name}</h1>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => toggleMute()}
-              className={isMuted ? 'text-destructive' : ''}
-            >
-              {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-            </Button>
-            <Button variant="outline" onClick={handleLeaveRoom}>
-              Leave Room
-            </Button>
-          </div>
-        </div>
-      </header>
-
+      
       {/* Main content */}
       <main className="flex-1 container py-6">
         <Card className="p-6">
-          {!hasPermission ? (
-            <div className="text-center p-4">
-              <p className="mb-4">Microphone access is required to participate in voice chat.</p>
-              <Button onClick={handleRequestPermission}>
-                Grant Microphone Access
-              </Button>
+          {isLoading ? (
+            <div className="flex items-center justify-center h-[60vh]">
+              <Loader2 className="h-8 w-8 animate-spin" />
             </div>
           ) : (
             room && (
-              <SpeakersPanel
-                isCreator={isHost}
-                hostId={room.creatorId}
-                hostName={room.users.find(u => u.id === room.creatorId)?.name || 'Host'}
-                hostAvatar={room.users.find(u => u.id === room.creatorId)?.avatarUrl}
-                speakers={speakers}
-                speakerRequests={speakerRequests}
-                currentUserId={userId}
-                roomId={params.id}
-                users={room.users}
-                onRequestToSpeak={requestToSpeak}
-                onAcceptSpeaker={acceptSpeaker}
-                onRemoveSpeaker={removeSpeaker}
-                onToggleMute={toggleMute}
-              />
+              <div className="flex flex-col h-screen">
+                {/* Header avec les boutons */}
+                <div className="flex items-center justify-between p-4 border-b">
+                  <h1 className="text-2xl font-bold">{room.name}</h1>
+                  <div className="flex items-center gap-4">
+                    {/* Bouton Mute pour host et speakers */}
+                    {(isHost || speakers.includes(userId || '')) && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={toggleMute}
+                        className={isMuted ? 'text-destructive' : ''}
+                      >
+                        {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                      </Button>
+                    )}
+                    
+                    {/* Bouton Request to Speak pour les autres */}
+                    {!isHost && !speakers.includes(userId || '') && (
+                      <Button
+                        onClick={requestToSpeak}
+                        disabled={speakerRequests.includes(userId || '')}
+                        variant={speakerRequests.includes(userId || '') ? "secondary" : "default"}
+                        className="min-w-[150px]"
+                      >
+                        {speakerRequests.includes(userId || '') ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Pending...
+                          </>
+                        ) : (
+                          'Request to Speak'
+                        )}
+                      </Button>
+                    )}
+                    
+                    {/* Bouton Leave Room */}
+                    <Button
+                      variant="destructive"
+                      onClick={handleLeaveRoom}
+                    >
+                      Leave Room
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Contenu principal */}
+                <div className="flex-1 overflow-hidden">
+                  <SpeakersPanel
+                    isCreator={isHost}
+                    hostId={room.creatorId}
+                    hostName={room.users.find(u => u.id === room.creatorId)?.name || 'Host'}
+                    hostAvatar={room.users.find(u => u.id === room.creatorId)?.avatarUrl}
+                    speakers={speakers}
+                    speakerRequests={speakerRequests}
+                    currentUserId={userId}
+                    roomId={params.id}
+                    users={room.users}
+                    onRequestToSpeak={requestToSpeak}
+                    onAcceptSpeaker={acceptSpeaker}
+                    onRemoveSpeaker={removeSpeaker}
+                    onToggleMute={toggleMute}
+                  />
+                </div>
+              </div>
             )
           )}
 

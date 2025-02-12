@@ -178,19 +178,6 @@ export function SpeakersPanel({
           </ScrollArea>
         </div>
       </div>
-
-      {/* Bouton Request to Speak */}
-      {!isHost && !isSpeaker && (
-        <div className="pt-4">
-          <Button
-            className="w-full"
-            onClick={onRequestToSpeak}
-            disabled={hasRequestedToSpeak}
-          >
-            {hasRequestedToSpeak ? 'Request Pending...' : 'Request to Speak'}
-          </Button>
-        </div>
-      )}
     </Card>
   )
 }

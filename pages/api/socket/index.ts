@@ -63,20 +63,53 @@ const ioHandler = (req: NextApiRequest, res: NextApiResponseServerIO) => {
         }
       })
 
-      socket.on('REQUEST_TO_SPEAK', ({ roomId, userId }) => {
+      socket.on('REQUEST_TO_SPEAK', async ({ roomId, userId }) => {
         console.log(`User ${userId} requested to speak in room ${roomId}`)
-        // Envoyer à tous les clients dans la room, y compris l'émetteur
         io?.to(roomId).emit('SPEAKER_REQUEST', userId)
       })
 
-      socket.on('ACCEPT_SPEAKER', ({ roomId, speakerId }) => {
-        console.log(`Speaker ${speakerId} accepted in room ${roomId}`)
-        io?.to(roomId).emit('SPEAKER_ACCEPTED', speakerId)
+      socket.on('ACCEPT_SPEAKER', async ({ roomId, speakerId }) => {
+        try {
+          console.log(`Speaker ${speakerId} accepted in room ${roomId}`)
+          
+          // Ajouter le speaker dans la base de données
+          const speakerCount = await prisma.speaker.count({
+            where: { roomId },
+          })
+
+          await prisma.speaker.create({
+            data: {
+              roomId,
+              userId: speakerId,
+              position: speakerCount + 1,
+            },
+          })
+
+          io?.to(roomId).emit('SPEAKER_ACCEPTED', speakerId)
+        } catch (error) {
+          console.error('Error accepting speaker:', error)
+        }
       })
 
-      socket.on('REMOVE_SPEAKER', ({ roomId, speakerId }) => {
-        console.log(`Speaker ${speakerId} removed from room ${roomId}`)
-        io?.to(roomId).emit('SPEAKER_REMOVED', speakerId)
+      socket.on('REMOVE_SPEAKER', async ({ roomId, speakerId }) => {
+        try {
+          console.log(`Speaker ${speakerId} removed from room ${roomId}`)
+          
+          // Supprimer le speaker de la base de données
+          await prisma.speaker.deleteMany({
+            where: {
+              roomId: roomId,
+              userId: speakerId,
+            },
+          })
+
+          // Informer tous les clients de la room
+          io?.to(roomId).emit('SPEAKER_REMOVED', speakerId)
+          
+          console.log('Speaker removed successfully')
+        } catch (error) {
+          console.error('Error removing speaker:', error)
+        }
       })
 
       socket.on('disconnect', () => {

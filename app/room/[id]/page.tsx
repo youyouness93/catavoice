@@ -62,8 +62,16 @@ export default function RoomPage({
   useEffect(() => {
     if (!userId) return
 
-    const socket = io('', {
+    // Déterminer l'URL du serveur Socket.IO
+    const socketUrl = process.env.NEXT_PUBLIC_SITE_URL || ''
+    console.log('Connecting to Socket.IO server at:', socketUrl)
+
+    const socket = io(socketUrl, {
       path: '/api/socket',
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000
     })
 
     socket.on('connect', () => {

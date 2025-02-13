@@ -362,11 +362,16 @@ export default function RoomPage({
   const requestToSpeak = useCallback(async () => {
     if (!userId || !socketRef.current || !params?.id) return;
 
+    console.log('Requesting to speak:', { roomId: params.id, userId });
+    
     // Mettre à jour le state local immédiatement
     setSpeakerRequests(prev => [...prev, userId])
     
-    // Envoyer la demande via socket
-    socketRef.current.emit('REQUEST_TO_SPEAK', { roomId: params.id, userId })
+    // Envoyer la demande via socket avec le bon nom d'événement
+    socketRef.current.emit('SPEAKER_REQUEST', { 
+      roomId: params.id, 
+      userId 
+    })
     
     toast({
       title: "Demande envoyée",

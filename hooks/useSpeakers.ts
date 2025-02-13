@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { IAgoraRTCClient } from 'agora-rtc-sdk-ng'
 import { useRoomWebSocket } from './useRoomWebSocket'
 
@@ -42,50 +42,56 @@ export function useSpeakers({
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Charger les speakers et la liste d'attente
+  // Charger les speakers
   const loadSpeakersAndWaitlist = useCallback(async () => {
     try {
-      const [speakersRes, waitlistRes] = await Promise.all([
-        fetch(`/api/rooms/${roomId}/speakers`),
-        fetch(`/api/rooms/${roomId}/waitlist`)
-      ])
-
-      if (!speakersRes.ok || !waitlistRes.ok) {
-        throw new Error('Failed to load speakers or waitlist')
+      const speakersRes = await fetch(`/api/rooms/${roomId}/speakers`)
+      
+      if (!speakersRes.ok) {
+        throw new Error('Failed to load speakers')
       }
 
-      const [speakersData, waitlistData] = await Promise.all([
-        speakersRes.json(),
-        waitlistRes.json()
-      ])
-
+      const speakersData = await speakersRes.json()
       setSpeakers(speakersData)
-      setWaitlist(waitlistData)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
-    } finally {
-      setIsLoading(false)
+      
+      // La waitlist sera mise à jour via Socket.IO
+    } catch (error) {
+      console.error('Error loading speakers:', error)
+      setError('Failed to load speakers')
     }
   }, [roomId])
 
-  // Initialiser le WebSocket
-  const { sendMessage } = useRoomWebSocket({
-    roomId,
-    onSpeakerAdded: (speaker) => {
-      setSpeakers(prev => [...prev, speaker as unknown as Speaker] as Speaker[])
-      setWaitlist(prev => prev.filter(u => (u as unknown as WaitlistUser).userId !== (speaker as unknown as Speaker).userId))
-    },
-    onSpeakerRemoved: (speakerId) => {
-      setSpeakers(prev => prev.filter(s => s.id !== speakerId))
-    },
-    onSpeakerMuted: (speakerId, isMuted) => {
-      setSpeakers(prev => prev.map(s => 
-        s.id === speakerId ? { ...s, isMuted } : s
-      ))
-    },
+  const handleSpeakerAccepted = useCallback((speaker: Speaker) => {
+    setSpeakers(prev => [...prev, speaker])
+    setWaitlist(prev => prev.filter(u => (u as unknown as WaitlistUser).userId !== (speaker as unknown as Speaker).userId))
+  }, [])
+
+  const handleSpeakerRemoved = useCallback((speakerId: string) => {
+    setSpeakers(prev => prev.filter(s => s.userId !== speakerId))
+  }, [])
+
+  // Gérer les mises à jour via Socket.IO
+  const {
+    onSpeakerAdded,
+    onSpeakerRemoved,
+    onSpeakerMuted,
+    onWaitlistUpdated,
+  } = useMemo(() => ({
+    onSpeakerAdded: handleSpeakerAccepted,
+    onSpeakerRemoved: handleSpeakerRemoved,
+    onSpeakerMuted: () => loadSpeakersAndWaitlist(),
     onWaitlistUpdated: (newWaitlist) => {
       setWaitlist(newWaitlist)
-    }
+    },
+  }), [handleSpeakerAccepted, handleSpeakerRemoved, loadSpeakersAndWaitlist])
+
+  // Initialiser le WebSocket
+  const { sendMessage, socket } = useRoomWebSocket({
+    roomId,
+    onSpeakerAdded,
+    onSpeakerRemoved,
+    onSpeakerMuted,
+    onWaitlistUpdated
   })
 
   // Charger les données initiales
@@ -95,29 +101,24 @@ export function useSpeakers({
 
   // Demander à parler
   const requestToSpeak = useCallback(async () => {
+    if (!userId || !userName || !userAvatar) {
+      setError('User information is missing')
+      return
+    }
+
     try {
-      const res = await fetch(`/api/rooms/${roomId}/waitlist`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          userId,
-          userName,
-          avatarUrl: userAvatar
-        })
+      // La demande sera gérée via Socket.IO
+      socket?.emit('SPEAKER_REQUEST', {
+        roomId,
+        userId,
+        userName,
+        userAvatar
       })
-
-      if (!res.ok) {
-        throw new Error('Failed to request to speak')
-      }
-
-      await loadSpeakersAndWaitlist()
     } catch (error) {
       console.error('Error requesting to speak:', error)
-      setError('Failed to request to speak')
+      setError('Failed to request speaking permission')
     }
-  }, [roomId, userId, userName, userAvatar, loadSpeakersAndWaitlist])
+  }, [roomId, userId, userName, userAvatar, socket])
 
   // Accepter un speaker (créateur uniquement)
   const acceptSpeaker = async (speakerId: string) => {

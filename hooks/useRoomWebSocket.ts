@@ -119,19 +119,15 @@ export function useRoomWebSocket({
     }
   }, [roomId, onSpeakerAdded, onSpeakerRemoved, onSpeakerMuted, onWaitlistUpdated])
 
+  // Envoyer un message via socket
   const sendMessage = useCallback((type: string, payload: any) => {
-    if (!socketRef.current?.connected) {
-      console.warn('Socket.IO not connected, message not sent:', type)
-      return
+    if (socketRef.current) {
+      socketRef.current.emit(type, payload)
     }
+  }, [])
 
-    try {
-      console.log('Sending message:', type, { roomId, ...payload })
-      socketRef.current.emit(type, { roomId, ...payload })
-    } catch (error) {
-      console.error('Error sending message:', error)
-    }
-  }, [roomId])
-
-  return { sendMessage }
+  return {
+    socket: socketRef.current,
+    sendMessage,
+  }
 }

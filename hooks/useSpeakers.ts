@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { IAgoraRTCClient } from 'agora-rtc-sdk-ng'
 import { useRoomWebSocket } from './useRoomWebSocket'
+import { useToast } from '@/components/ui/use-toast'
 
 interface Speaker {
   id: string
@@ -34,42 +35,34 @@ export function useSpeakers({
   userId, 
   userName,
   userAvatar,
-  isCreator, 
+  isCreator = false, 
   agoraClient 
 }: UseSpeakersProps) {
+  const { toast } = useToast()
   const [speakers, setSpeakers] = useState<Speaker[]>([])
   const [waitlist, setWaitlist] = useState<WaitlistUser[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Charger les speakers et la liste d'attente
-  const loadSpeakersAndWaitlist = useCallback(async () => {
+  // Charger les speakers
+  const loadSpeakers = useCallback(async () => {
     try {
-      const [speakersRes, waitlistRes] = await Promise.all([
-        fetch(`/api/rooms/${roomId}/speakers`),
-        fetch(`/api/rooms/${roomId}/waitlist`)
-      ])
+      const speakersRes = await fetch(`/api/rooms/${roomId}/speakers`)
 
-      if (!speakersRes.ok || !waitlistRes.ok) {
-        throw new Error('Failed to load speakers or waitlist')
+      if (!speakersRes.ok) {
+        throw new Error('Failed to load speakers')
       }
 
-      const [speakersData, waitlistData] = await Promise.all([
-        speakersRes.json(),
-        waitlistRes.json()
-      ])
+      const speakersData = await speakersRes.json()
 
       setSpeakers(speakersData)
-      setWaitlist(waitlistData)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
-    } finally {
-      setIsLoading(false)
     }
   }, [roomId])
 
   // Initialiser le WebSocket
-  const { sendMessage } = useRoomWebSocket({
+  const { socket, sendMessage } = useRoomWebSocket({
     roomId,
     onSpeakerAdded: (speaker) => {
       setSpeakers(prev => [...prev, speaker as unknown as Speaker] as Speaker[])
@@ -90,80 +83,74 @@ export function useSpeakers({
 
   // Charger les données initiales
   useEffect(() => {
-    loadSpeakersAndWaitlist()
-  }, [loadSpeakersAndWaitlist])
+    loadSpeakers()
+  }, [loadSpeakers])
 
   // Demander à parler
   const requestToSpeak = useCallback(async () => {
+    if (!socket || !roomId || !userId) return;
+
     try {
-      const res = await fetch(`/api/rooms/${roomId}/waitlist`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          userId,
-          userName,
-          avatarUrl: userAvatar
-        })
-      })
-
-      if (!res.ok) {
-        throw new Error('Failed to request to speak')
-      }
-
-      await loadSpeakersAndWaitlist()
+      // Émettre directement via socket.io
+      socket.emit('SPEAKER_REQUEST', { roomId, userId });
+      
+      toast({
+        title: 'Demande envoyée',
+        description: 'Votre demande a été envoyée au host',
+      });
     } catch (error) {
-      console.error('Error requesting to speak:', error)
-      setError('Failed to request to speak')
+      console.error('Error requesting to speak:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de faire la demande',
+        variant: 'destructive',
+      });
     }
-  }, [roomId, userId, userName, userAvatar, loadSpeakersAndWaitlist])
+  }, [roomId, userId, socket, toast]);
 
   // Accepter un speaker (créateur uniquement)
-  const acceptSpeaker = async (speakerId: string) => {
-    if (!isCreator) return
+  const acceptSpeaker = useCallback(async (speakerId: string) => {
+    if (!socket || !roomId) return;
 
     try {
-      const res = await fetch(`/api/rooms/${roomId}/speakers`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: speakerId })
-      })
-
-      if (!res.ok) {
-        throw new Error('Failed to accept speaker')
-      }
-
-      const data = await res.json()
-      sendMessage('SPEAKER_ADDED', data)
-
-      // Mettre à jour Agora pour le nouvel utilisateur
-      if (agoraClient) {
-        await agoraClient.setClientRole('host')
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to accept speaker')
+      // Émettre directement via socket.io
+      socket.emit('SPEAKER_ACCEPTED', { roomId, userId: speakerId });
+      
+      toast({
+        title: 'Speaker accepté',
+        description: 'L\'utilisateur peut maintenant parler',
+      });
+    } catch (error) {
+      console.error('Error accepting speaker:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible d\'accepter le speaker',
+        variant: 'destructive',
+      });
     }
-  }
+  }, [roomId, socket, toast]);
 
   // Supprimer un speaker (créateur uniquement)
-  const removeSpeaker = async (speakerId: string) => {
-    if (!isCreator) return
+  const removeSpeaker = useCallback(async (speakerId: string) => {
+    if (!socket || !roomId || !isCreator) return;
 
     try {
-      const res = await fetch(`/api/rooms/${roomId}/speakers/${speakerId}`, {
-        method: 'DELETE'
-      })
-
-      if (!res.ok) {
-        throw new Error('Failed to remove speaker')
-      }
-
-      sendMessage('SPEAKER_REMOVED', speakerId)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove speaker')
+      // Émettre directement via socket.io
+      socket.emit('REMOVE_SPEAKER', { roomId, speakerId });
+      
+      toast({
+        title: 'Speaker retiré',
+        description: 'L\'utilisateur ne peut plus parler',
+      });
+    } catch (error) {
+      console.error('Error removing speaker:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de retirer le speaker',
+        variant: 'destructive',
+      });
     }
-  }
+  }, [roomId, isCreator, socket, toast]);
 
   // Activer/désactiver le micro d'un speaker
   const toggleMute = async (speakerId: string) => {

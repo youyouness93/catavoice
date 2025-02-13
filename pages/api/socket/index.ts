@@ -22,22 +22,7 @@ const ioHandler = (req: NextApiRequest, res: NextApiResponseServerIO) => {
       addTrailingSlash: false,
       pingTimeout: 60000,
       pingInterval: 25000,
-      cors: {
-        origin: '*',
-        methods: ['GET', 'POST'],
-        credentials: true
-      },
-      transports: ['websocket', 'polling'],
-      allowEIO3: true
     })
-
-    io.engine.on('connection_error', (err) => {
-      console.log('Connection error:', err);
-    });
-
-    io.on('connect_error', (err) => {
-      console.log('Connect error:', err);
-    });
 
     io.on('connection', (socket) => {
       console.log('Client connected:', socket.id)

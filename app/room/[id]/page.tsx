@@ -62,16 +62,8 @@ export default function RoomPage({
   useEffect(() => {
     if (!userId) return
 
-    // Déterminer l'URL du serveur Socket.IO
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || ''
-    console.log('Connecting to WebSocket server at:', wsUrl)
-
-    const socket = io(wsUrl.replace('ws://', 'http://').replace('wss://', 'https://'), {
+    const socket = io('', {
       path: '/api/socket',
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000
     })
 
     socket.on('connect', () => {
@@ -362,16 +354,11 @@ export default function RoomPage({
   const requestToSpeak = useCallback(async () => {
     if (!userId || !socketRef.current || !params?.id) return;
 
-    console.log('Requesting to speak:', { roomId: params.id, userId });
-    
     // Mettre à jour le state local immédiatement
     setSpeakerRequests(prev => [...prev, userId])
     
-    // Envoyer la demande via socket avec le bon nom d'événement
-    socketRef.current.emit('SPEAKER_REQUEST', { 
-      roomId: params.id, 
-      userId 
-    })
+    // Envoyer la demande via socket
+    socketRef.current.emit('REQUEST_TO_SPEAK', { roomId: params.id, userId })
     
     toast({
       title: "Demande envoyée",

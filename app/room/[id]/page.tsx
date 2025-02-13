@@ -63,10 +63,10 @@ export default function RoomPage({
     if (!userId) return
 
     // Déterminer l'URL du serveur Socket.IO
-    const socketUrl = process.env.NEXT_PUBLIC_SITE_URL || ''
-    console.log('Connecting to Socket.IO server at:', socketUrl)
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || ''
+    console.log('Connecting to WebSocket server at:', wsUrl)
 
-    const socket = io(socketUrl, {
+    const socket = io(wsUrl.replace('ws://', 'http://').replace('wss://', 'https://'), {
       path: '/api/socket',
       transports: ['websocket'],
       reconnection: true,

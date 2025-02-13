@@ -39,7 +39,26 @@ export function SpeakersPanel({
 }: SpeakersPanelProps) {
   const isHost = currentUserId === hostId
   const isSpeaker = speakers.includes(currentUserId || '')
-  const hasRequestedToSpeak = speakerRequests.includes(currentUserId || '')
+  // Un utilisateur n'est en attente que s'il est dans speakerRequests ET qu'il n'est PAS déjà speaker
+  const hasRequestedToSpeak = !isSpeaker && speakerRequests.includes(currentUserId || '')
+
+  // Force re-render when props change
+  useEffect(() => {
+    console.log('SpeakersPanel props updated:', { 
+      speakers, 
+      speakerRequests,
+      isSpeaker,
+      hasRequestedToSpeak,
+      currentUserId 
+    })
+  }, [speakers, speakerRequests, isSpeaker, hasRequestedToSpeak, currentUserId])
+
+  const getUserStatus = (userId: string) => {
+    if (userId === hostId) return 'Host'
+    if (speakers.includes(userId)) return 'Speaker'
+    if (speakerRequests.includes(userId)) return 'Waiting'
+    return 'Listener'
+  }
 
   return (
     <Card className="p-6 h-[calc(100vh-2rem)] flex flex-col">
@@ -110,6 +129,26 @@ export function SpeakersPanel({
               )
             })}
           </div>
+          {/* Bouton Request to Speak */}
+          {!isHost && !isSpeaker && (
+            <div className="mt-4 flex justify-center">
+              <Button
+                onClick={onRequestToSpeak}
+                disabled={hasRequestedToSpeak}
+                variant={hasRequestedToSpeak ? "secondary" : "default"}
+                className="min-w-[150px]"
+              >
+                {hasRequestedToSpeak ? (
+                  <>
+                    <span className="mr-2">●</span>
+                    Pending...
+                  </>
+                ) : (
+                  'Request to Speak'
+                )}
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Section Demandes (visible uniquement par le host) */}
@@ -165,10 +204,7 @@ export function SpeakersPanel({
                     <div>
                       <p className="text-sm font-medium">{user.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {user.id === hostId ? 'Host' : 
-                         speakers.includes(user.id) ? 'Speaker' : 
-                         speakerRequests.includes(user.id) ? 'Waiting' : 
-                         'Listener'}
+                        {getUserStatus(user.id)}
                       </p>
                     </div>
                   </div>

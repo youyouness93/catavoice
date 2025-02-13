@@ -76,10 +76,57 @@ export default function RoomPage({
       setSpeakerRequests(prev => [...prev, requesterId])
     })
 
-    socket.on('SPEAKER_ACCEPTED', () => {
-      // Recharger la liste des speakers depuis la base de données
-      loadSpeakers()
-      setSpeakerRequests([]) // Vider la liste des demandes
+    socket.on('SPEAKER_ACCEPTED', ({ userId }: { userId: string }) => {
+      console.log('Speaker accepted:', userId)
+      // Les mises à jour seront gérées par SPEAKERS_UPDATED et WAITLIST_UPDATED
+    })
+
+    socket.on('SPEAKERS_UPDATED', ({ speakers: updatedSpeakers }: { speakers: any[] }) => {
+      console.log('Speakers updated:', updatedSpeakers)
+      const speakerIds = updatedSpeakers.map(s => s.userId)
+      console.log('Setting speakers to:', speakerIds)
+      setSpeakers(speakerIds)
+      
+      // Mettre à jour la room avec les nouvelles informations des utilisateurs
+      setRoom(prev => {
+        if (!prev) return prev;
+        const updatedUsers = [...prev.users];
+        updatedSpeakers.forEach(speaker => {
+          const userIndex = updatedUsers.findIndex(u => u.id === speaker.userId);
+          if (userIndex === -1 && speaker.user) {
+            updatedUsers.push({
+              id: speaker.userId,
+              name: speaker.user.name,
+              avatarUrl: speaker.user.avatarUrl
+            });
+          }
+        });
+        return {
+          ...prev,
+          users: updatedUsers
+        };
+      });
+    })
+
+    socket.on('WAITLIST_UPDATED', ({ waitlist: updatedWaitlist }: { waitlist: any[] }) => {
+      console.log('Waitlist updated:', updatedWaitlist)
+      const waitlistIds = updatedWaitlist.map(w => w.userId)
+      console.log('Setting waitlist to:', waitlistIds)
+      setSpeakerRequests(waitlistIds)
+    })
+
+    socket.on('disconnect', () => {
+      console.log('Disconnected from Socket.IO')
+      // Tenter de se reconnecter
+      socket.connect()
+    })
+
+    socket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error)
+      // Tenter de se reconnecter
+      setTimeout(() => {
+        socket.connect()
+      }, 1000)
     })
 
     socket.on('SPEAKER_REMOVED', () => {
@@ -89,10 +136,18 @@ export default function RoomPage({
 
     socketRef.current = socket
 
+    // Nettoyer la connexion socket
     return () => {
       socket.disconnect()
     }
   }, [userId, params.id])
+
+  // Recharger les données quand le socket se reconnecte
+  useEffect(() => {
+    if (socketRef.current?.connected) {
+      loadSpeakers()
+    }
+  }, [socketRef.current?.connected])
 
   // Gestion des speakers
   const { speakers: speakersHook, error: speakersError, requestToSpeak: requestToSpeakHook } = useSpeakers({
@@ -400,12 +455,13 @@ export default function RoomPage({
                     speakers={speakers}
                     speakerRequests={speakerRequests}
                     currentUserId={userId}
-                    roomId={params.id}
+                    roomId={room.id}
                     users={room.users}
                     onRequestToSpeak={requestToSpeak}
                     onAcceptSpeaker={acceptSpeaker}
                     onRemoveSpeaker={removeSpeaker}
                     onToggleMute={toggleMute}
+                    key={`${speakers.join(',')}-${speakerRequests.join(',')}`} // Forcer le re-render
                   />
                 </div>
               </div>
